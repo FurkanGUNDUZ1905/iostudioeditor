@@ -1,0 +1,980 @@
+<!DOCTYPE html>
+<html lang="tr">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>io studio - Pro</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script src="https://unpkg.com/@phosphor-icons/web"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
+    
+    <script>
+        tailwind.config = {
+            theme: {
+                extend: {
+                    colors: {
+                        darkBg: '#09090b',
+                        panelBg: '#18181b',
+                        panelBorder: '#27272a',
+                        accent: '#3b82f6',
+                        accentHover: '#2563eb'
+                    }
+                }
+            }
+        }
+    </script>
+    <style>
+        ::-webkit-scrollbar { width: 8px; height: 10px; }
+        ::-webkit-scrollbar-track { background: #18181b; }
+        ::-webkit-scrollbar-thumb { background: #3f3f46; border-radius: 4px; }
+        ::-webkit-scrollbar-thumb:hover { background: #52525b; }
+        
+        input[type=range] { -webkit-appearance: none; width: 100%; background: transparent; }
+        input[type=range]::-webkit-slider-thumb { -webkit-appearance: none; height: 14px; width: 14px; border-radius: 50%; background: #3b82f6; cursor: pointer; margin-top: -5px; }
+        input[type=range]::-webkit-slider-runnable-track { width: 100%; height: 4px; cursor: pointer; background: #3f3f46; border-radius: 2px; }
+        input[type=range]:focus { outline: none; }
+        
+        input[type="color"] { -webkit-appearance: none; border: none; width: 32px; height: 32px; border-radius: 50%; padding: 0; overflow: hidden; cursor: pointer; }
+        input[type="color"]::-webkit-color-swatch-wrapper { padding: 0; }
+        input[type="color"]::-webkit-color-swatch { border: none; border-radius: 50%; }
+
+        .tab-content { display: none; }
+        .tab-content.active { display: block; }
+        
+        .tl-track { position: relative; height: 40px; background: #18181b; border-bottom: 1px solid #27272a; border-top: 1px solid #000; overflow: hidden; }
+        .tl-track-label { position: absolute; left: 0; top: 0; bottom: 0; width: 80px; background: #09090b; z-index: 10; display: flex; align-items: center; justify-content: center; font-size: 10px; color: #71717a; border-right: 1px solid #27272a; }
+        .tl-content { position: absolute; left: 80px; top: 0; bottom: 0; right: 0; background: url('data:image/svg+xml;utf8,<svg width="20" height="20" xmlns="http://www.w3.org/2000/svg"><rect width="1" height="20" fill="%2327272a"/></svg>'); }
+        
+        .tl-segment { position: absolute; height: 80%; top: 10%; border-radius: 4px; background: #3f3f46; border: 1px solid #52525b; font-size: 10px; color: white; display: flex; align-items: center; padding-left: 6px; cursor: pointer; overflow: hidden; user-select: none; }
+        .tl-segment.active { border-color: #3b82f6; background: #2563eb; z-index: 5; }
+        .tl-resizer-r, .tl-resizer-l { position: absolute; top: 0; bottom: 0; width: 8px; background: rgba(255,255,255,0.2); cursor: ew-resize; }
+        .tl-resizer-r { right: 0; }
+        .tl-resizer-l { left: 0; }
+        
+        .tl-playhead { position: absolute; top: 0; width: 2px; background: #ef4444; z-index: 20; pointer-events: none; }
+        .tl-playhead::before { content: ''; position: absolute; top: 0; left: -4px; width: 10px; height: 10px; background: #ef4444; border-radius: 50%; }
+
+        #timelineContainer::-webkit-scrollbar:horizontal { display: none; }
+        
+        #timelineScrollbar::-webkit-slider-thumb {
+            -webkit-appearance: none;
+            height: 12px;
+            width: 80px;
+            border-radius: 6px;
+            background: #3b82f6;
+            cursor: pointer;
+            margin-top: -4px;
+        }
+        #timelineScrollbar::-webkit-slider-thumb:hover { background: #2563eb; }
+        #timelineScrollbar::-webkit-slider-runnable-track {
+            height: 4px;
+            background: #27272a;
+            border-radius: 2px;
+        }
+
+        canvas { touch-action: none; }
+    </style>
+</head>
+<body class="bg-darkBg text-gray-200 font-sans h-screen flex flex-col overflow-hidden">
+
+    <!-- DASHBOARD (PROJE LİSTESİ) GÖRÜNÜMÜ -->
+    <div id="dashboardView" class="h-screen w-full flex flex-col p-10 bg-darkBg overflow-y-auto z-50 absolute inset-0">
+        <div class="max-w-6xl w-full mx-auto">
+            <div class="flex justify-between items-center mb-10 border-b border-panelBorder pb-6">
+                <h1 class="text-3xl font-bold text-white tracking-widest lowercase flex items-center gap-3">
+                    <i class="ph ph-film-strip text-accent"></i> io studio
+                </h1>
+                <div class="flex items-center gap-4">
+                    <select onchange="changeLanguage(this.value)" id="langSelect1" class="bg-darkBg border border-panelBorder rounded text-xs text-white p-2 focus:border-accent focus:outline-none">
+                        <option value="tr">Türkçe</option>
+                        <option value="en">English</option>
+                    </select>
+                    <button onclick="createNewProject()" class="bg-accent hover:bg-accentHover text-white px-6 py-2 rounded-lg font-bold transition-colors shadow-lg flex items-center gap-2">
+                        <i class="ph ph-plus-circle text-xl"></i> <span data-i18n="newProject">Yeni Proje</span>
+                    </button>
+                </div>
+            </div>
+            
+            <h2 class="text-lg font-semibold text-gray-400 mb-6" data-i18n="recentProjects">Son Projelerim</h2>
+            
+            <div id="projectGrid" class="grid grid-cols-1 md:grid-cols-3 lg:grid-cols-4 gap-6"></div>
+            
+            <div id="emptyState" class="hidden flex-col items-center justify-center py-20 text-gray-500">
+                <i class="ph ph-folder-open text-6xl mb-4 opacity-50"></i>
+                <p data-i18n="noProjects">Henüz kayıtlı bir projeniz yok.</p>
+            </div>
+        </div>
+    </div>
+
+    <!-- EDİTÖR GÖRÜNÜMÜ -->
+    <div id="editorView" class="hidden h-screen flex flex-col overflow-hidden w-full absolute inset-0">
+        
+        <header class="h-14 bg-panelBg border-b border-panelBorder flex items-center justify-between px-4 shrink-0 z-40 relative">
+            <div class="flex items-center gap-4">
+                <button onclick="goHome()" class="text-gray-400 hover:text-white transition-colors flex items-center gap-1 bg-darkBg px-3 py-1.5 rounded border border-panelBorder text-xs">
+                    <i class="ph ph-house text-base"></i> <span data-i18n="homeMenu">Menü</span>
+                </button>
+                <div class="h-6 w-px bg-panelBorder"></div>
+                <h1 class="text-sm font-bold text-white tracking-widest lowercase flex items-center gap-2">
+                    io studio <span class="text-gray-500 font-normal">/</span> <span id="currentProjectName" class="text-accent cursor-pointer hover:underline" onclick="openRenameModal(null, state.projectName, event)">İsimsiz Proje</span>
+                </h1>
+                <div class="flex items-center gap-2 border-l border-panelBorder pl-4 ml-2">
+                    <button onclick="undo()" class="text-gray-400 hover:text-white transition-colors" title="Geri Al (Ctrl+Z)"><i class="ph ph-arrow-u-up-left text-lg"></i></button>
+                    <button onclick="redo()" class="text-gray-400 hover:text-white transition-colors" title="İleri Al (Ctrl+Y)"><i class="ph ph-arrow-u-up-right text-lg"></i></button>
+                </div>
+            </div>
+            
+            <div class="flex items-center gap-2">
+                <select onchange="changeLanguage(this.value)" id="langSelect2" class="bg-darkBg border border-panelBorder rounded text-xs text-white p-1.5 focus:border-accent focus:outline-none mr-2">
+                    <option value="tr">TR</option>
+                    <option value="en">EN</option>
+                </select>
+                <input type="file" id="mediaInput" accept="image/*,video/*" multiple class="hidden">
+                <input type="file" id="audioInput" accept="audio/*" multiple class="hidden">
+                
+                <button onclick="addTextItem()" class="flex items-center gap-1 bg-panelBorder hover:bg-gray-700 text-white px-3 py-1.5 rounded transition-colors text-xs">
+                    <i class="ph ph-text-t text-base"></i> <span data-i18n="textEmoji">Metin & Emoji</span>
+                </button>
+                <button onclick="document.getElementById('audioInput').click()" class="flex items-center gap-1 bg-panelBorder hover:bg-gray-700 text-white px-3 py-1.5 rounded transition-colors text-xs">
+                    <i class="ph ph-music-notes text-base"></i> <span data-i18n="music">Müzik</span>
+                </button>
+                <button onclick="document.getElementById('mediaInput').click()" class="flex items-center gap-1 bg-panelBorder hover:bg-gray-700 text-white px-3 py-1.5 rounded transition-colors text-xs">
+                    <i class="ph ph-image text-base"></i> <span data-i18n="addMedia">Medya Ekle</span>
+                </button>
+                <button id="exportBtn" class="flex items-center gap-1 bg-accent hover:bg-accentHover text-white px-4 py-1.5 rounded transition-colors text-xs font-bold ml-2 shadow-lg" disabled>
+                    <i class="ph ph-export text-base"></i> <span data-i18n="saveVideo">Videoyu Kaydet</span>
+                </button>
+            </div>
+        </header>
+
+        <div class="flex flex-1 overflow-hidden relative">
+            <aside class="w-16 bg-panelBg border-r border-panelBorder flex flex-col items-center py-4 gap-4 shrink-0 z-20">
+                <button class="tool-tab text-gray-400 hover:text-white p-2 rounded-lg bg-panelBorder text-white" data-target="tab-transform"><i class="ph ph-arrows-out-cardinal text-2xl"></i></button>
+                <button class="tool-tab text-gray-400 hover:text-white p-2 rounded-lg" data-target="tab-adjust"><i class="ph ph-sliders-horizontal text-2xl"></i></button>
+                <button class="tool-tab text-gray-400 hover:text-white p-2 rounded-lg" data-target="tab-text" id="textTabBtn" style="display:none;"><i class="ph ph-text-aa text-2xl"></i></button>
+                <button class="tool-tab text-gray-400 hover:text-white p-2 rounded-lg" data-target="tab-draw"><i class="ph ph-paint-brush-broad text-2xl"></i></button>
+                <button class="tool-tab text-gray-400 hover:text-white p-2 rounded-lg mt-2 pt-4 border-t border-panelBorder" data-target="tab-converter"><i class="ph ph-swap text-2xl"></i></button>
+            </aside>
+
+            <aside class="w-72 bg-panelBg border-r border-panelBorder flex flex-col overflow-y-auto shrink-0 transition-opacity" id="toolsPanel" style="opacity: 0.5; pointer-events: none;">
+                
+                <!-- YERLEŞİM (TRANSFORM) & ZAMAN AYARLARI -->
+                <div id="tab-transform" class="tab-content active p-5">
+                    <h2 class="text-sm font-semibold text-gray-300 mb-4 border-b border-panelBorder pb-2" data-i18n="timingSettings">Zaman Ayarları</h2>
+                    
+                    <div class="space-y-4 text-xs mb-6">
+                        <div class="prop-group">
+                            <label class="text-gray-400 block mb-1" data-i18n="startTime">Başlangıç Zamanı (sn)</label>
+                            <input type="number" id="input-startTime" step="0.1" min="0" class="w-full bg-darkBg border border-panelBorder rounded p-2 text-white focus:border-accent focus:outline-none transition-colors">
+                        </div>
+                        <div class="prop-group">
+                            <label class="text-gray-400 block mb-1" data-i18n="duration">Görünme Süresi (sn)</label>
+                            <input type="number" id="input-duration" step="0.1" min="0.5" class="w-full bg-darkBg border border-panelBorder rounded p-2 text-white focus:border-accent focus:outline-none transition-colors">
+                        </div>
+                        
+                        <!-- Yeni Eklenti: Müzik ve Video Kırpma / Hız Kontrolü -->
+                        <div id="mediaTimeSettings" style="display:none;" class="p-3 bg-darkBg rounded border border-panelBorder mt-2">
+                            <div class="prop-group mb-4">
+                                <label class="text-accent block mb-1 font-semibold" data-i18n="trimStart">İçerik Başlangıcı (sn)</label>
+                                <input type="number" id="input-trimStart" step="0.1" min="0" class="w-full bg-black border border-panelBorder rounded p-2 text-white focus:border-accent focus:outline-none transition-colors">
+                                <span class="text-[9px] text-gray-500 mt-1 block">Videonun veya Müziğin kendi içerisindeki hangi saniyeden itibaren başlayacağını belirler.</span>
+                            </div>
+                            <div class="prop-group">
+                                <label class="text-accent block mb-1 font-semibold" data-i18n="playbackRate">Oynatma Hızı</label>
+                                <select id="input-playbackRate" class="w-full bg-black border border-panelBorder rounded p-2 text-white focus:border-accent focus:outline-none transition-colors">
+                                    <option value="0.25">0.25x (Çok Yavaş)</option>
+                                    <option value="0.5">0.5x (Yavaş)</option>
+                                    <option value="1">1x (Normal)</option>
+                                    <option value="1.5">1.5x (Hızlı)</option>
+                                    <option value="2">2x (Çok Hızlı)</option>
+                                    <option value="4">4x (Aşırı Hızlı)</option>
+                                </select>
+                            </div>
+                        </div>
+                    </div>
+
+                    <h2 class="text-sm font-semibold text-gray-300 mb-4 border-b border-panelBorder pb-2" data-i18n="transformSize">Yerleşim & Boyut</h2>
+                    <div class="space-y-4 text-xs">
+                        <div class="prop-group"><div class="flex justify-between text-gray-400 mb-1"><label data-i18n="xPos">X Konumu</label><div class="flex gap-2 items-center"><span id="val-x">0</span> <button onclick="resetProp('x', 0)" class="hover:text-white"><i class="ph ph-arrow-counter-clockwise"></i></button></div></div><input type="range" data-prop="x" min="-1000" max="1000" value="0" class="ctrl-slider"></div>
+                        <div class="prop-group"><div class="flex justify-between text-gray-400 mb-1"><label data-i18n="yPos">Y Konumu</label><div class="flex gap-2 items-center"><span id="val-y">0</span> <button onclick="resetProp('y', 0)" class="hover:text-white"><i class="ph ph-arrow-counter-clockwise"></i></button></div></div><input type="range" data-prop="y" min="-1000" max="1000" value="0" class="ctrl-slider"></div>
+                        <div class="prop-group"><div class="flex justify-between text-gray-400 mb-1"><label data-i18n="scale">Ölçek (Büyüklük)</label><div class="flex gap-2 items-center"><span id="val-scale">1.0</span> <button onclick="resetProp('scale', 1)" class="hover:text-white"><i class="ph ph-arrow-counter-clockwise"></i></button></div></div><input type="range" data-prop="scale" min="0.1" max="5" step="0.1" value="1" class="ctrl-slider"></div>
+                        <div class="prop-group"><div class="flex justify-between text-gray-400 mb-1"><label data-i18n="rotation">Döndürme</label><div class="flex gap-2 items-center"><span id="val-rot">0°</span> <button onclick="resetProp('rotation', 0)" class="hover:text-white"><i class="ph ph-arrow-counter-clockwise"></i></button></div></div><input type="range" data-prop="rotation" min="-180" max="180" value="0" class="ctrl-slider"></div>
+                    </div>
+
+                    <h2 class="text-sm font-semibold text-gray-300 mt-6 mb-4 border-b border-panelBorder pb-2" data-i18n="quickTools">Hızlı Araçlar</h2>
+                    <div class="flex flex-col gap-2">
+                        <button class="bg-darkBg border border-panelBorder p-2 rounded text-xs hover:border-accent transition-colors" onclick="centerActiveItem()" data-i18n="center">Merkeze Al</button>
+                        <div class="flex gap-2 mt-2">
+                            <button class="flex-1 bg-darkBg border border-panelBorder p-2 rounded text-xs hover:bg-panelBorder hover:text-white transition-colors" onclick="duplicateActiveItem()"><i class="ph ph-copy"></i> <span data-i18n="duplicate">Çoğalt</span></button>
+                            <button class="flex-1 bg-red-900/30 text-red-400 border border-red-900/50 p-2 rounded text-xs hover:bg-red-900/50 transition-colors" onclick="removeActiveItem()"><i class="ph ph-trash"></i> <span data-i18n="delete">Sil</span></button>
+                        </div>
+                        <label class="flex items-center gap-2 cursor-pointer bg-darkBg p-2 rounded border border-panelBorder mt-2" id="muteBox">
+                            <input type="checkbox" id="muteToggle" class="w-3 h-3 rounded text-accent">
+                            <span class="text-xs" data-i18n="muteMedia">Bu Medyanın Sesini Kapat</span>
+                        </label>
+                    </div>
+                </div>
+
+                <!-- AYARLAR & FILTRELER (Kırpmalar dahil) -->
+                <div id="tab-adjust" class="tab-content p-5">
+                    <h2 class="text-sm font-semibold text-gray-300 mb-4 border-b border-panelBorder pb-2" data-i18n="colorsEffects">Renk & Efektler</h2>
+                    <div class="space-y-4 text-xs">
+                        <div class="prop-group"><div class="flex justify-between text-gray-400 mb-1"><label data-i18n="brightness">Parlaklık</label><div class="flex gap-2 items-center"><span id="val-bright">100%</span> <button onclick="resetProp('brightness', 100)" class="hover:text-white"><i class="ph ph-arrow-counter-clockwise"></i></button></div></div><input type="range" data-prop="brightness" min="0" max="200" value="100" class="ctrl-slider"></div>
+                        <div class="prop-group"><div class="flex justify-between text-gray-400 mb-1"><label data-i18n="contrast">Kontrast</label><div class="flex gap-2 items-center"><span id="val-contrast">100%</span> <button onclick="resetProp('contrast', 100)" class="hover:text-white"><i class="ph ph-arrow-counter-clockwise"></i></button></div></div><input type="range" data-prop="contrast" min="0" max="200" value="100" class="ctrl-slider"></div>
+                        <div class="prop-group"><div class="flex justify-between text-gray-400 mb-1"><label data-i18n="blur">Bulanıklık</label><div class="flex gap-2 items-center"><span id="val-blur">0%</span> <button onclick="resetProp('blur', 0)" class="hover:text-white"><i class="ph ph-arrow-counter-clockwise"></i></button></div></div><input type="range" data-prop="blur" min="0" max="100" value="0" class="ctrl-slider"></div>
+                    </div>
+
+                    <h2 class="text-sm font-semibold text-gray-300 mt-6 mb-4 border-b border-panelBorder pb-2" data-i18n="imageCrop">Görsel Kırpma</h2>
+                    <div class="space-y-4 text-xs mb-6">
+                        <div class="prop-group"><div class="flex justify-between text-gray-400 mb-1"><label data-i18n="cropTop">Üstten</label><div class="flex gap-2"><span id="val-cropT">0%</span> <button onclick="resetProp('cropTop', 0)"><i class="ph ph-arrow-counter-clockwise"></i></button></div></div><input type="range" data-prop="cropTop" min="0" max="50" value="0"></div>
+                        <div class="prop-group"><div class="flex justify-between text-gray-400 mb-1"><label data-i18n="cropBottom">Alttan</label><div class="flex gap-2"><span id="val-cropB">0%</span> <button onclick="resetProp('cropBottom', 0)"><i class="ph ph-arrow-counter-clockwise"></i></button></div></div><input type="range" data-prop="cropBottom" min="0" max="50" value="0"></div>
+                        <div class="prop-group"><div class="flex justify-between text-gray-400 mb-1"><label data-i18n="cropLeft">Soldan</label><div class="flex gap-2"><span id="val-cropL">0%</span> <button onclick="resetProp('cropLeft', 0)"><i class="ph ph-arrow-counter-clockwise"></i></button></div></div><input type="range" data-prop="cropLeft" min="0" max="50" value="0"></div>
+                        <div class="prop-group"><div class="flex justify-between text-gray-400 mb-1"><label data-i18n="cropRight">Sağdan</label><div class="flex gap-2"><span id="val-cropR">0%</span> <button onclick="resetProp('cropRight', 0)"><i class="ph ph-arrow-counter-clockwise"></i></button></div></div><input type="range" data-prop="cropRight" min="0" max="50" value="0"></div>
+                    </div>
+                </div>
+
+                <div id="tab-text" class="tab-content p-5">
+                    <div class="flex justify-between items-center mb-4 border-b border-panelBorder pb-2"><h2 class="text-sm font-semibold text-gray-300" data-i18n="editText">Metin Düzenle</h2></div>
+                    <div class="space-y-4">
+                        <div><label class="text-xs text-gray-400 block mb-1" data-i18n="textHint">Metin (OS Klavyesi için Win+ Nokta)</label><textarea id="textInput" class="w-full bg-darkBg border border-panelBorder rounded p-2 text-sm text-white resize-none h-20 focus:border-accent focus:outline-none"></textarea></div>
+                        <div><label class="text-xs text-gray-400 block mb-1" data-i18n="font">Yazı Tipi (Font)</label><select id="fontSelect" class="w-full bg-darkBg border border-panelBorder rounded p-2 text-sm text-white focus:outline-none"><option value="Arial">Arial</option><option value="Times New Roman">Times New Roman</option><option value="Courier New">Courier</option><option value="Impact">Impact</option><option value="Comic Sans MS">Comic Sans</option></select></div>
+                        <div class="flex gap-2"><button id="boldBtn" class="flex-1 bg-darkBg border border-panelBorder p-2 rounded text-center hover:bg-panelBorder font-bold transition-colors">B</button><button id="italicBtn" class="flex-1 bg-darkBg border border-panelBorder p-2 rounded text-center hover:bg-panelBorder italic transition-colors">I</button></div>
+                        <div><label class="text-xs text-gray-400 block mb-1" data-i18n="textColor">Metin Rengi</label><input type="color" id="textColor" class="w-full h-8 rounded cursor-pointer" value="#ffffff"></div>
+                        <label class="flex items-center gap-2 cursor-pointer bg-darkBg p-2 rounded border border-panelBorder"><input type="checkbox" id="bgVisibleToggle" class="w-4 h-4 rounded text-accent"><span class="text-xs" data-i18n="blackBg">Siyah Arka Plan (Görünürlük)</span></label>
+                    </div>
+                </div>
+
+                <div id="tab-draw" class="tab-content p-5">
+                    <h2 class="text-sm font-semibold text-gray-300 mb-4 border-b border-panelBorder pb-2" data-i18n="freeDraw">Serbest Çizim</h2>
+                    <div class="flex gap-2 mb-4"><button id="penBtn" class="flex-1 bg-accent text-white p-2 rounded text-xs flex justify-center items-center gap-1 border border-accent transition-colors"><i class="ph ph-pen"></i> <span data-i18n="pen">Kalem</span></button><button id="eraserBtn" class="flex-1 bg-darkBg text-gray-300 border border-panelBorder p-2 rounded text-xs flex justify-center items-center gap-1 hover:border-white transition-colors"><i class="ph ph-eraser"></i> <span data-i18n="eraser">Silgi</span></button></div>
+                    <div class="mb-4"><label class="text-xs text-gray-400 block mb-2" data-i18n="penColor">Kalem Rengi</label><input type="color" id="drawColor" class="w-full h-10 rounded cursor-pointer" value="#ef4444"></div>
+                    <div><div class="flex justify-between text-xs mb-1 text-gray-400"><label data-i18n="thickness">Kalınlık</label><span id="val-brushSize">5px</span></div><input type="range" id="brushSize" min="1" max="100" value="5" class="ctrl-slider"></div>
+                    <button onclick="clearDrawings()" class="w-full mt-6 bg-red-900/30 text-red-400 hover:bg-red-900/60 p-2 rounded text-xs border border-red-900 transition-colors" data-i18n="clearDrawings">Bu Katmandaki Çizimleri Sil</button>
+                </div>
+
+                <div id="tab-converter" class="tab-content p-5">
+                    <h2 class="text-sm font-semibold text-gray-300 mb-4 border-b border-panelBorder pb-2" data-i18n="fileConverter">Dosya Dönüştürücü</h2>
+                    <input type="file" id="convertInput" class="hidden">
+                    <button onclick="document.getElementById('convertInput').click()" class="w-full bg-darkBg border border-panelBorder p-2 rounded text-xs hover:border-accent mb-2 transition-colors flex justify-center items-center gap-2"><i class="ph ph-upload-simple"></i> <span data-i18n="selectFile">Dosya Seç</span></button>
+                    <div id="convertFileName" class="text-[10px] text-gray-400 mb-6 truncate text-center h-4">...</div>
+                    <div>
+                        <label class="text-xs text-gray-400 block mb-1" data-i18n="targetFormat">Hedef Format</label>
+                        <select id="convertFormat" class="w-full bg-darkBg border border-panelBorder rounded p-2 text-sm text-white focus:outline-none focus:border-accent mb-6 transition-colors">
+                            <optgroup label="Görsel" data-i18n-label="visual"><option value="jpg">JPG</option><option value="png">PNG</option><option value="webp">WEBP</option></optgroup>
+                            <optgroup label="Belge & Metin" data-i18n-label="document"><option value="pdf">PDF</option><option value="txt">TXT</option><option value="html">HTML</option></optgroup>
+                        </select>
+                    </div>
+                    <button id="convertBtn" class="w-full bg-accent hover:bg-accentHover text-white p-3 rounded text-xs font-bold transition-colors flex justify-center items-center gap-2"><i class="ph ph-arrows-left-right"></i> <span data-i18n="convertDownload">Dönüştür ve İndir</span></button>
+                    <div class="mt-4 p-3 bg-blue-900/20 border border-blue-900/50 rounded text-[10px] text-gray-400 leading-relaxed"><i class="ph ph-info text-blue-400 inline-block mb-1 text-sm"></i><br><span data-i18n="converterInfo">Görseller (JPG, PNG, WEBP), Metinler (TXT, HTML) ve temel PDF'ler kalite kaybı olmadan anında dönüştürülür.</span></div>
+                </div>
+            </aside>
+
+            <main class="flex-1 flex flex-col bg-black relative" id="mainArea">
+                <div id="statusNotice" class="absolute top-4 left-1/2 transform -translate-x-1/2 bg-blue-900/90 text-blue-100 px-4 py-2 rounded-full text-xs flex items-center gap-2 hidden z-50 shadow-xl border border-blue-500"><i class="ph ph-spinner-gap animate-spin text-lg"></i><span id="statusText" data-i18n="processing">İşleniyor... Lütfen bekleyin.</span></div>
+                <div class="flex-1 flex justify-center items-center overflow-hidden relative p-4 cursor-move" id="previewContainer">
+                    <canvas id="renderCanvas" width="1280" height="720" class="max-w-full max-h-full object-contain shadow-2xl bg-black border border-gray-800"></canvas>
+                </div>
+                
+                <div class="h-12 bg-panelBg border-t border-panelBorder flex items-center justify-center gap-4 px-6 shrink-0 relative z-20">
+                    <button id="globalPlayBtn" class="bg-accent hover:bg-accentHover text-white w-8 h-8 rounded-full flex justify-center items-center transition-colors"><i class="ph ph-play text-lg" id="globalPlayIcon"></i></button>
+                    <div class="flex items-center text-xs text-gray-400 w-40 justify-center gap-1">
+                        <input type="text" id="timeInput" value="00:00.00" class="w-16 bg-transparent border border-transparent hover:border-panelBorder focus:border-accent focus:bg-darkBg focus:outline-none text-center px-0 py-0 rounded transition-colors" title="Süreyi değiştirin ve Enter'a basın">
+                        <span>/</span><span id="durationDisplay">00:00.00</span>
+                    </div>
+                    <label class="flex items-center gap-1 cursor-pointer text-xs bg-darkBg border border-panelBorder px-2 py-1 rounded text-gray-300 hover:text-white transition-colors absolute right-6"><input type="checkbox" id="loopToggle" class="w-3 h-3 text-accent rounded"><span data-i18n="loop">Döngü</span></label>
+                </div>
+            </main>
+        </div>
+
+        <div id="timelineResizer" class="h-1 bg-panelBorder hover:bg-accent cursor-row-resize transition-colors shrink-0 z-40 relative"><div class="absolute inset-0 flex justify-center items-center pointer-events-none opacity-0 hover:opacity-100 transition-opacity"><div class="w-8 h-1 bg-accent rounded"></div></div></div>
+        
+        <footer id="timelineFooter" class="h-48 bg-darkBg border-t border-black shrink-0 flex flex-col z-30 select-none relative transition-[height] duration-75">
+            <div class="h-8 bg-panelBg border-b border-panelBorder flex justify-between items-center px-4 text-[10px] text-gray-400 tracking-wider shrink-0">
+                <span data-i18n="timelineHeader">ZAMAN ÇİZELGESİ (Öğeleri sürükleyerek taşıyabilirsiniz)</span>
+                <div class="flex items-center gap-4">
+                    <span class="text-[9px] opacity-70 text-accent" data-i18n="scrollHint">Çizgiyi fareyle kaydırabilirsiniz</span>
+                    <div class="flex items-center gap-2 border-l border-panelBorder pl-4">
+                        <button id="zoomOutBtn" class="hover:text-white transition-colors flex items-center gap-1" title="Zamanı Daralt"><i class="ph ph-magnifying-glass-minus text-base"></i></button>
+                        <button id="zoomInBtn" class="hover:text-white transition-colors flex items-center gap-1" title="Zamanı Genişlet"><i class="ph ph-magnifying-glass-plus text-base"></i></button>
+                    </div>
+                </div>
+            </div>
+            
+            <div class="flex-1 overflow-y-auto overflow-x-auto relative" id="timelineContainer"></div>
+            
+            <div class="h-6 bg-panelBg border-t border-panelBorder flex items-center px-2 shrink-0">
+                <input type="range" id="timelineScrollbar" min="0" max="100" step="any" value="0" class="w-full h-2 bg-transparent appearance-none">
+            </div>
+        </footer>
+    </div>
+
+    <!-- MODALLAR -->
+    <div id="newProjectModal" class="hidden fixed inset-0 bg-black/80 z-[100] justify-center items-center backdrop-blur-sm"><div class="bg-panelBg border border-panelBorder rounded-xl p-6 w-96 shadow-2xl"><h2 class="text-lg font-bold text-white mb-4" data-i18n="newProject">Yeni Proje Oluştur</h2><div class="mb-6"><label class="text-xs text-gray-400 block mb-2" data-i18n="projectName">Proje Adı</label><input type="text" id="newProjectInput" value="İsimsiz Proje" class="w-full bg-darkBg border border-panelBorder rounded p-2 text-sm text-white focus:border-accent focus:outline-none transition-colors"></div><div class="flex justify-end gap-3"><button onclick="closeModals()" class="px-4 py-2 rounded text-sm text-gray-300 hover:bg-darkBg transition-colors border border-transparent" data-i18n="cancel">İptal</button><button onclick="confirmNewProject()" class="px-4 py-2 rounded text-sm bg-accent hover:bg-accentHover text-white transition-colors" data-i18n="create">Oluştur</button></div></div></div>
+    <div id="deleteProjectModal" class="hidden fixed inset-0 bg-black/80 z-[100] justify-center items-center backdrop-blur-sm"><div class="bg-panelBg border border-panelBorder rounded-xl p-6 w-96 shadow-2xl"><h2 class="text-lg font-bold text-red-500 mb-2 flex items-center gap-2"><i class="ph ph-warning"></i> <span data-i18n="deleteProject">Projeyi Sil</span></h2><p class="text-sm text-gray-400 mb-6" data-i18n="deleteWarning">Bu projeyi kalıcı olarak silmek üzeresiniz. Bu işlem geri alınamaz.</p><label class="flex items-center gap-3 cursor-pointer bg-darkBg p-3 rounded border border-panelBorder mb-6"><input type="checkbox" id="deleteConfirmToggle" onchange="toggleDeleteConfirm(event)" class="w-4 h-4 rounded text-red-500 focus:ring-red-500 bg-panelBg border-panelBorder"><span class="text-sm text-white" data-i18n="confirmDeleteText">Onaylıyorum (Silmek için kilidi aç)</span></label><div class="flex justify-end gap-3"><button onclick="closeModals()" class="px-4 py-2 rounded text-sm text-gray-300 hover:bg-darkBg transition-colors border border-transparent" data-i18n="cancel">İptal</button><button id="deleteConfirmBtn" onclick="executeDeleteProject()" disabled class="px-4 py-2 rounded text-sm bg-red-600 hover:bg-red-700 text-white transition-colors disabled:opacity-50 disabled:cursor-not-allowed" data-i18n="permanentlyDelete">Kalıcı Olarak Sil</button></div></div></div>
+    <div id="renameProjectModal" class="hidden fixed inset-0 bg-black/80 z-[100] justify-center items-center backdrop-blur-sm"><div class="bg-panelBg border border-panelBorder rounded-xl p-6 w-96 shadow-2xl"><h2 class="text-lg font-bold text-white mb-4 flex items-center gap-2"><i class="ph ph-pencil-simple text-accent"></i> <span data-i18n="rename">İsmini Değiştir</span></h2><div class="mb-6"><label class="text-xs text-gray-400 block mb-2" data-i18n="projectName">Proje Adı</label><input type="text" id="renameProjectInput" class="w-full bg-darkBg border border-panelBorder rounded p-2 text-sm text-white focus:border-accent focus:outline-none transition-colors"></div><div class="flex justify-end gap-3"><button onclick="closeModals()" class="px-4 py-2 rounded text-sm text-gray-300 hover:bg-darkBg transition-colors border border-transparent" data-i18n="cancel">İptal</button><button onclick="confirmRenameProject()" class="px-4 py-2 rounded text-sm bg-accent hover:bg-accentHover text-white transition-colors">Kaydet</button></div></div></div>
+    <div class="hidden" id="mediaPool"></div>
+
+    <script>
+        const translations = {
+            tr: {
+                "newProject": "Yeni Proje", "recentProjects": "Son Projelerim", "noProjects": "Henüz kayıtlı bir projeniz yok.",
+                "projectName": "Proje Adı", "cancel": "İptal", "create": "Oluştur", "deleteProject": "Projeyi Sil",
+                "deleteWarning": "Bu projeyi kalıcı olarak silmek üzeresiniz. Bu işlem geri alınamaz.", "confirmDeleteText": "Onaylıyorum (Silmek için kilidi aç)",
+                "permanentlyDelete": "Kalıcı Olarak Sil", "homeMenu": "Menü", "textEmoji": "Metin & Emoji", "music": "Müzik",
+                "addMedia": "Medya Ekle", "saveVideo": "Videoyu Kaydet", "timingSettings": "Zaman Ayarları", "startTime": "Başlangıç Zamanı (sn)",
+                "duration": "Görünme Süresi (sn)", "trimStart": "İçerik Başlangıcı (sn)", "playbackRate": "Oynatma Hızı",
+                "transformSize": "Yerleşim & Boyut", "colorsEffects": "Renk & Efektler", "textSettings": "Metin Ayarları",
+                "penEraser": "Kalem & Silgi", "fileConverter": "Dosya Dönüştürücü", "xPos": "X Konumu", "yPos": "Y Konumu",
+                "scale": "Ölçek (Büyüklük)", "rotation": "Döndürme", "quickTools": "Hızlı Araçlar", "center": "Merkeze Al",
+                "duplicate": "Çoğalt", "delete": "Sil", "rename": "İsmi Değiştir", "muteMedia": "Bu Medyanın Sesini Kapat",
+                "brightness": "Parlaklık", "contrast": "Kontrast", "blur": "Bulanıklık", "imageCrop": "Görsel Kırpma",
+                "cropTop": "Üstten", "cropBottom": "Alttan", "cropLeft": "Soldan", "cropRight": "Sağdan",
+                "editText": "Metin Düzenle", "textHint": "Metin (OS Klavyesi için Win+ Nokta)", "font": "Yazı Tipi (Font)",
+                "textColor": "Metin Rengi", "blackBg": "Siyah Arka Plan (Görünürlük)", "freeDraw": "Serbest Çizim",
+                "pen": "Kalem", "eraser": "Silgi", "penColor": "Kalem Rengi", "thickness": "Kalınlık",
+                "clearDrawings": "Bu Katmandaki Çizimleri Sil", "selectFile": "Dosya Seç", "targetFormat": "Hedef Format",
+                "convertDownload": "Dönüştür ve İndir", "loop": "Döngü", "timelineHeader": "ZAMAN ÇİZELGESİ (Öğeleri sürükleyerek taşıyabilirsiniz)",
+                "scrollHint": "Fare tekerleği aşağı-yukarı, kırmızı çizgi ise video zamanını kaydırır", "layer": "Katman",
+                "musicLayer": "Müzik", "untitledProject": "İsimsiz Proje", "processing": "İşleniyor... Lütfen bekleyin.",
+                "converting": "Dönüştürülüyor...", "downloadReady": "Dosya indiriliyor, hazır!", "selectFileFirst": "Lütfen dönüştürmek için bir dosya seçin.",
+                "conversionFailed": "Dönüştürme başarısız oldu. Format desteklenmiyor olabilir.", "exportFailed": "Dışa aktarma hatası: Tarayıcınız desteklemiyor olabilir.",
+                "converterInfo": "Görseller (JPG, PNG, WEBP), Metinler (TXT, HTML) ve temel PDF'ler kalite kaybı olmadan anında dönüştürülür.",
+                "visual": "Görsel", "document": "Belge & Metin", "items": "Öğe"
+            },
+            en: {
+                "newProject": "New Project", "recentProjects": "Recent Projects", "noProjects": "You have no saved projects yet.",
+                "projectName": "Project Name", "cancel": "Cancel", "create": "Create", "deleteProject": "Delete Project",
+                "deleteWarning": "You are about to permanently delete this project. This action cannot be undone.", "confirmDeleteText": "I confirm (Unlock to delete)",
+                "permanentlyDelete": "Permanently Delete", "homeMenu": "Menu", "textEmoji": "Text & Emoji", "music": "Music",
+                "addMedia": "Add Media", "saveVideo": "Save Video", "timingSettings": "Timing Settings", "startTime": "Start Time (sec)",
+                "duration": "Duration (sec)", "trimStart": "Content Start (sec)", "playbackRate": "Playback Speed",
+                "transformSize": "Transform & Size", "colorsEffects": "Colors & Effects", "textSettings": "Text Settings",
+                "penEraser": "Pen & Eraser", "fileConverter": "File Converter", "xPos": "X Position", "yPos": "Y Position",
+                "scale": "Scale (Size)", "rotation": "Rotation", "quickTools": "Quick Tools", "center": "Center",
+                "duplicate": "Duplicate", "delete": "Delete", "rename": "Rename", "muteMedia": "Mute This Media",
+                "brightness": "Brightness", "contrast": "Contrast", "blur": "Blur", "imageCrop": "Image Crop",
+                "cropTop": "Top", "cropBottom": "Bottom", "cropLeft": "Left", "cropRight": "Right",
+                "editText": "Edit Text", "textHint": "Text (Win+Period for OS Keyboard)", "font": "Font",
+                "textColor": "Text Color", "blackBg": "Black Background (Visibility)", "freeDraw": "Free Draw",
+                "pen": "Pen", "eraser": "Eraser", "penColor": "Pen Color", "thickness": "Thickness",
+                "clearDrawings": "Clear Drawings on This Layer", "selectFile": "Select File", "targetFormat": "Target Format",
+                "convertDownload": "Convert & Download", "loop": "Loop", "timelineHeader": "TIMELINE (Drag items to move)",
+                "scrollHint": "Mouse wheel scrolls vertically, drag red line to scrub time", "layer": "Layer",
+                "musicLayer": "Music", "untitledProject": "Untitled Project", "processing": "Processing... Please wait.",
+                "converting": "Converting...", "downloadReady": "Downloading file, ready!", "selectFileFirst": "Please select a file to convert.",
+                "conversionFailed": "Conversion failed. Format may not be supported.", "exportFailed": "Export error: Your browser may not support it.",
+                "converterInfo": "Images (JPG, PNG, WEBP), Texts (TXT, HTML), and basic PDFs are converted instantly without quality loss.",
+                "visual": "Visual", "document": "Document & Text", "items": "Items"
+            }
+        };
+
+        let currentLang = localStorage.getItem('iostudio_lang') || 'tr';
+        function t(key) { return translations[currentLang][key] || key; }
+
+        function applyTranslations() {
+            document.querySelectorAll('[data-i18n]').forEach(el => {
+                const key = el.getAttribute('data-i18n');
+                if (translations[currentLang][key]) el.innerText = translations[currentLang][key];
+            });
+            document.querySelectorAll('[data-i18n-label]').forEach(el => {
+                const key = el.getAttribute('data-i18n-label');
+                if (translations[currentLang][key]) el.label = translations[currentLang][key];
+            });
+            document.getElementById('langSelect1').value = currentLang; document.getElementById('langSelect2').value = currentLang;
+            if(!ELS.dashboard.classList.contains('hidden')) loadAllProjectsToDashboard();
+            if(!ELS.editor.classList.contains('hidden')) renderTimeline();
+        }
+
+        window.changeLanguage = (lang) => { currentLang = lang; localStorage.setItem('iostudio_lang', lang); applyTranslations(); };
+
+        const state = {
+            projectId: null, projectName: '', pWidth: 1280, pHeight: 720, duration: 10, loop: false,
+            items: [], selectedId: null, isPlaying: false, currentTime: 0,
+            drawMode: 'none', drawColor: '#ef4444', drawSize: 5, isDrawing: false,
+            dragMode: null, dragItem: null, dragStartX: 0, dragStartY: 0, dragInitVal: 0, pxPerSec: 50
+        };
+
+        const ELS = {
+            dashboard: document.getElementById('dashboardView'), editor: document.getElementById('editorView'),
+            projectGrid: document.getElementById('projectGrid'), emptyState: document.getElementById('emptyState'),
+            currentProjectName: document.getElementById('currentProjectName'), renderCanvas: document.getElementById('renderCanvas'),
+            pool: document.getElementById('mediaPool'), tlContainer: document.getElementById('timelineContainer'),
+            tlFooter: document.getElementById('timelineFooter'), tlResizer: document.getElementById('timelineResizer'),
+            tlScroller: document.getElementById('timelineScrollbar'), playBtn: document.getElementById('globalPlayBtn'),
+            playIcon: document.getElementById('globalPlayIcon'), timeInput: document.getElementById('timeInput'),
+            durationDisplay: document.getElementById('durationDisplay'), exportBtn: document.getElementById('exportBtn'),
+            toolsPanel: document.getElementById('toolsPanel'), statusNotice: document.getElementById('statusNotice'),
+            statusText: document.getElementById('statusText'), textTabBtn: document.getElementById('textTabBtn'),
+            inpStartTime: document.getElementById('input-startTime'), inpDuration: document.getElementById('input-duration'),
+            inpTrimStart: document.getElementById('input-trimStart'), inpPlaybackRate: document.getElementById('input-playbackRate'),
+            mediaTimeSettings: document.getElementById('mediaTimeSettings')
+        };
+        const ctx = ELS.renderCanvas.getContext('2d', { willReadFrequently: true });
+
+        const DB_NAME = 'ioStudioDB_v4'; 
+        const STORE_NAME = 'projects';
+
+        function initDB() {
+            return new Promise((resolve, reject) => {
+                const req = indexedDB.open(DB_NAME, 1);
+                req.onupgradeneeded = (e) => { e.target.result.createObjectStore(STORE_NAME, { keyPath: 'id' }); };
+                req.onsuccess = () => resolve(req.result); req.onerror = () => reject(req.error);
+            });
+        }
+
+        async function saveCurrentProject() {
+            if(!state.projectId) return;
+            try {
+                const db = await initDB(); const tx = db.transaction(STORE_NAME, 'readwrite'); const store = tx.objectStore(STORE_NAME);
+                const dataToSave = {
+                    id: state.projectId, name: state.projectName, lastModified: Date.now(), duration: state.duration,
+                    items: state.items.map(i => {
+                        const clone = { ...i }; delete clone.mediaEl;
+                        if(clone.drawCnv) { clone.savedDrawData = clone.drawCnv.toDataURL(); delete clone.drawCnv; }
+                        return clone;
+                    })
+                };
+                store.put(dataToSave);
+            } catch(e) { console.error("Proje kaydetme hatası:", e); }
+        }
+
+        async function loadAllProjectsToDashboard() {
+            try {
+                const db = await initDB(); const tx = db.transaction(STORE_NAME, 'readonly'); const store = tx.objectStore(STORE_NAME);
+                const req = store.getAll();
+                req.onsuccess = () => {
+                    const projects = req.result.sort((a,b) => b.lastModified - a.lastModified);
+                    ELS.projectGrid.innerHTML = '';
+                    if(projects.length === 0) { ELS.emptyState.classList.remove('hidden'); ELS.emptyState.classList.add('flex'); } 
+                    else {
+                        ELS.emptyState.classList.add('hidden'); ELS.emptyState.classList.remove('flex');
+                        projects.forEach(p => {
+                            const date = new Date(p.lastModified).toLocaleDateString(currentLang === 'tr' ? 'tr-TR' : 'en-US', { hour: '2-digit', minute:'2-digit' });
+                            const card = document.createElement('div');
+                            card.className = 'bg-panelBg border border-panelBorder rounded-xl p-5 flex flex-col justify-between hover:border-accent transition-colors group cursor-pointer shadow-lg';
+                            card.innerHTML = `
+                                <div onclick="openProject('${p.id}')">
+                                    <h3 class="text-white font-bold text-lg mb-1 truncate">${p.name}</h3>
+                                    <p class="text-xs text-gray-500 mb-4"><i class="ph ph-clock"></i> ${date}</p>
+                                    <div class="flex items-center gap-2 text-xs text-gray-400"><i class="ph ph-files"></i> ${p.items.length} ${t('items')} | ${Math.round(p.duration)}s</div>
+                                </div>
+                                <div class="mt-4 pt-4 border-t border-panelBorder flex justify-between opacity-0 group-hover:opacity-100 transition-opacity">
+                                    <button onclick="openRenameModal('${p.id}', '${p.name.replace(/'/g, "\\'")}', event)" class="text-blue-400 bg-blue-900/30 border border-blue-900/50 hover:bg-blue-900/60 px-4 py-2 rounded-full text-xs flex items-center gap-1.5 transition-colors shadow-sm font-medium"><i class="ph ph-pencil-simple"></i> ${t('rename')}</button>
+                                    <button onclick="deleteProject('${p.id}', event)" class="text-red-400 bg-red-900/30 border border-red-900/50 hover:bg-red-900/60 px-4 py-2 rounded-full text-xs flex items-center gap-1.5 transition-colors shadow-sm font-medium"><i class="ph ph-trash"></i> ${t('delete')}</button>
+                                </div>`;
+                            ELS.projectGrid.appendChild(card);
+                        });
+                    }
+                };
+            } catch(e) { console.error(e); }
+        }
+
+        let pendingDeleteId = null; let projectToRenameId = null;
+
+        window.createNewProject = () => {
+            document.getElementById('newProjectInput').value = t('untitledProject'); document.getElementById('newProjectModal').classList.remove('hidden'); document.getElementById('newProjectModal').classList.add('flex');
+            setTimeout(() => document.getElementById('newProjectInput').select(), 50);
+        };
+        window.confirmNewProject = () => {
+            const name = document.getElementById('newProjectInput').value || t('untitledProject'); closeModals(); stopPlayback(); ELS.pool.innerHTML = ''; ctx.clearRect(0,0,state.pWidth, state.pHeight);
+            state.projectId = 'proj_' + Date.now(); state.projectName = name; state.items = []; state.duration = 10; state.currentTime = 0; historyStack = []; historyIndex = -1;
+            switchToEditor(); saveCurrentProject(); 
+        };
+        window.closeModals = () => {
+            document.getElementById('newProjectModal').classList.add('hidden'); document.getElementById('newProjectModal').classList.remove('flex');
+            document.getElementById('deleteProjectModal').classList.add('hidden'); document.getElementById('deleteProjectModal').classList.remove('flex');
+            document.getElementById('renameProjectModal').classList.add('hidden'); document.getElementById('renameProjectModal').classList.remove('flex');
+            pendingDeleteId = null; projectToRenameId = null;
+        };
+        window.openProject = async (id) => {
+            try {
+                const db = await initDB(); const tx = db.transaction(STORE_NAME, 'readonly'); const store = tx.objectStore(STORE_NAME); const req = store.get(id);
+                req.onsuccess = async () => {
+                    const p = req.result; if(!p) return;
+                    stopPlayback(); ELS.pool.innerHTML = ''; ctx.clearRect(0,0,state.pWidth, state.pHeight);
+                    state.projectId = p.id; state.projectName = p.name; state.duration = Math.max(p.duration, 5); state.items = []; state.currentTime = 0; historyStack = []; historyIndex = -1;
+                    for(let s of p.items) {
+                        if(s.type === 'video' || s.type === 'audio') {
+                            const el = document.createElement(s.type);
+                            if(s.file) { const src = URL.createObjectURL(s.file); el.src = src; s.src = src; }
+                            el.muted = s.props.muted || true; ELS.pool.appendChild(el); s.mediaEl = el;
+                        } else if (s.type === 'image') {
+                            const img = new Image(); if(s.file) { const src = URL.createObjectURL(s.file); img.src = src; s.src = src; } s.mediaEl = img;
+                        }
+                        const drawCnv = document.createElement('canvas'); drawCnv.width = state.pWidth; drawCnv.height = state.pHeight;
+                        if(s.savedDrawData) { const img = new Image(); img.src = s.savedDrawData; await new Promise(r => img.onload = r); drawCnv.getContext('2d').drawImage(img, 0, 0); }
+                        s.drawCnv = drawCnv; state.items.push(s);
+                    }
+                    switchToEditor(); snapshot(); 
+                };
+            } catch(e) { console.error(e); }
+        };
+        window.deleteProject = (id, e) => {
+            e.stopPropagation(); pendingDeleteId = id; document.getElementById('deleteConfirmToggle').checked = false; document.getElementById('deleteConfirmBtn').disabled = true;
+            document.getElementById('deleteProjectModal').classList.remove('hidden'); document.getElementById('deleteProjectModal').classList.add('flex');
+        };
+        window.toggleDeleteConfirm = (e) => { document.getElementById('deleteConfirmBtn').disabled = !e.target.checked; };
+        window.executeDeleteProject = async () => {
+            if(!pendingDeleteId) return;
+            try { const db = await initDB(); const tx = db.transaction(STORE_NAME, 'readwrite'); tx.objectStore(STORE_NAME).delete(pendingDeleteId); tx.oncomplete = () => { loadAllProjectsToDashboard(); closeModals(); }; } catch(e) { console.error(e); }
+        };
+        window.goHome = () => { stopPlayback(); ELS.editor.classList.add('hidden'); ELS.dashboard.classList.remove('hidden'); loadAllProjectsToDashboard(); };
+        window.openRenameModal = (id, currentName, e) => {
+            if(e) e.stopPropagation(); projectToRenameId = id; document.getElementById('renameProjectInput').value = currentName;
+            document.getElementById('renameProjectModal').classList.remove('hidden'); document.getElementById('renameProjectModal').classList.add('flex'); setTimeout(() => document.getElementById('renameProjectInput').select(), 50);
+        };
+        window.confirmRenameProject = async () => {
+            const newName = document.getElementById('renameProjectInput').value; if(!newName || newName.trim() === '') { closeModals(); return; }
+            if(projectToRenameId) {
+                try {
+                    const db = await initDB(); const tx = db.transaction(STORE_NAME, 'readwrite'); const store = tx.objectStore(STORE_NAME); const req = store.get(projectToRenameId);
+                    req.onsuccess = () => { const p = req.result; if(p) { p.name = newName; p.lastModified = Date.now(); store.put(p); tx.oncomplete = () => { loadAllProjectsToDashboard(); closeModals(); }; } };
+                } catch(err) { console.error(err); }
+            } else { state.projectName = newName; ELS.currentProjectName.innerText = newName; saveCurrentProject(); closeModals(); }
+        };
+        function switchToEditor() { ELS.dashboard.classList.add('hidden'); ELS.editor.classList.remove('hidden'); ELS.currentProjectName.innerText = state.projectName; if(state.items.length > 0) unlockUI(); else lockUI(); updateProjectDuration(); renderTimeline(); drawFrame(); }
+        window.onload = () => { applyTranslations(); loadAllProjectsToDashboard(); };
+
+        let isResizingTL = false;
+        ELS.tlResizer.addEventListener('mousedown', () => isResizingTL = true);
+        window.addEventListener('mousemove', (e) => { if(isResizingTL) { let newHeight = window.innerHeight - e.clientY; if(newHeight > 100 && newHeight < window.innerHeight * 0.8) { ELS.tlFooter.style.height = newHeight + 'px'; renderTimeline(); } } });
+        window.addEventListener('mouseup', () => isResizingTL = false);
+
+        function updateScroller() {
+            const maxScroll = ELS.tlContainer.scrollWidth - ELS.tlContainer.clientWidth;
+            if(maxScroll > 0) { ELS.tlScroller.max = maxScroll; ELS.tlScroller.disabled = false; ELS.tlScroller.value = ELS.tlContainer.scrollLeft; } 
+            else { ELS.tlScroller.max = 0; ELS.tlScroller.value = 0; ELS.tlScroller.disabled = true; }
+        }
+        ELS.tlScroller.addEventListener('input', (e) => { ELS.tlContainer.scrollLeft = e.target.value; });
+        ELS.tlContainer.addEventListener('scroll', () => { ELS.tlScroller.value = ELS.tlContainer.scrollLeft; });
+        window.addEventListener('resize', updateScroller);
+
+        // Trackpad veya orta tuş ile yatay kaydırma
+        let isPanningTL = false; let panStartX = 0; let panScrollLeft = 0;
+        ELS.tlContainer.addEventListener('mousedown', (e) => {
+            if (e.button === 1 || (e.button === 0 && e.shiftKey)) {
+                isPanningTL = true; panStartX = e.clientX; panScrollLeft = ELS.tlContainer.scrollLeft;
+                ELS.tlContainer.style.cursor = 'grabbing'; e.preventDefault();
+            }
+        });
+        window.addEventListener('mousemove', (e) => { if (isPanningTL) ELS.tlContainer.scrollLeft = panScrollLeft - (e.clientX - panStartX); });
+        window.addEventListener('mouseup', () => { isPanningTL = false; ELS.tlContainer.style.cursor = ''; });
+        
+        ELS.tlContainer.addEventListener('wheel', (e) => {
+            if (e.deltaX !== 0) ELS.tlContainer.scrollLeft += e.deltaX;
+            else if (e.shiftKey) { ELS.tlContainer.scrollLeft += e.deltaY; e.preventDefault(); }
+        });
+
+        // Dosya Dönüştürücü (Converter)
+        document.getElementById('convertInput').addEventListener('change', (e) => { if(e.target.files.length > 0) document.getElementById('convertFileName').innerText = e.target.files[0].name; else document.getElementById('convertFileName').innerText = '...'; });
+        document.getElementById('convertBtn').addEventListener('click', async () => {
+            const fileInput = document.getElementById('convertInput'); if(!fileInput.files || fileInput.files.length === 0) { alert(t('selectFileFirst')); return; }
+            const file = fileInput.files[0]; const targetExt = document.getElementById('convertFormat').value; const originalName = file.name.substring(0, file.name.lastIndexOf('.')) || file.name; const newFileName = `${originalName}_converted.${targetExt}`;
+            ELS.statusNotice.classList.remove('hidden'); ELS.statusText.innerText = t('converting');
+            try {
+                if (['jpg', 'jpeg', 'png', 'webp'].includes(targetExt)) await convertToImageFormat(file, targetExt, newFileName);
+                else if (targetExt === 'pdf') await convertToPDFFormat(file, newFileName);
+                else if (['txt', 'html'].includes(targetExt)) await convertToTextFormat(file, targetExt, newFileName);
+            } catch (err) { alert(t('conversionFailed')); }
+            setTimeout(() => { ELS.statusNotice.classList.add('hidden'); }, 1000);
+        });
+        function downloadConvertBlob(blob, filename) { const url = URL.createObjectURL(blob); const a = document.createElement('a'); a.href = url; a.download = filename; document.body.appendChild(a); a.click(); document.body.removeChild(a); URL.revokeObjectURL(url); }
+        async function convertToImageFormat(file, ext, filename) { return new Promise((resolve, reject) => { const url = URL.createObjectURL(file); const img = new Image(); img.onload = () => { const cvs = document.createElement('canvas'); cvs.width = img.width; cvs.height = img.height; cvs.getContext('2d').drawImage(img, 0, 0); let mimeType = `image/${ext === 'jpg' ? 'jpeg' : ext}`; cvs.toBlob(blob => { if(blob) { downloadConvertBlob(blob, filename); resolve(); } else reject(); }, mimeType, 0.9); URL.revokeObjectURL(url); }; img.onerror = () => reject("Error"); img.src = url; }); }
+        async function convertToTextFormat(file, ext, filename) { return new Promise((resolve, reject) => { const reader = new FileReader(); reader.onload = (e) => { let content = e.target.result; if(ext === 'txt') { const temp = document.createElement('div'); temp.innerHTML = content; content = temp.textContent || temp.innerText || content; } else if(ext === 'html') { if(!content.includes('<html') && !content.includes('<body')) { content = `<!DOCTYPE html>\n<html>\n<body>\n<pre>${content}</pre>\n</body>\n</html>`; } } const blob = new Blob([content], { type: ext === 'html' ? 'text/html' : 'text/plain' }); downloadConvertBlob(blob, filename); resolve(); }; reader.onerror = reject; reader.readAsText(file); }); }
+        async function convertToPDFFormat(file, filename) { return new Promise((resolve, reject) => { if(file.type.startsWith('image/')) { const url = URL.createObjectURL(file); const img = new Image(); img.onload = () => { if(!window.jspdf) return reject("Error"); const { jsPDF } = window.jspdf; const orientation = img.width > img.height ? 'l' : 'p'; const doc = new jsPDF(orientation, 'px', [img.width, img.height]); doc.addImage(img, 'JPEG', 0, 0, img.width, img.height); doc.save(filename); URL.revokeObjectURL(url); resolve(); }; img.onerror = reject; img.src = url; } else { const reader = new FileReader(); reader.onload = (e) => { if(!window.jspdf) return reject("Error"); const { jsPDF } = window.jspdf; const doc = new jsPDF(); doc.text(e.target.result.substring(0, 3000), 10, 10); doc.save(filename); resolve(); }; reader.onerror = reject; reader.readAsText(file); } }); }
+
+        let historyStack = []; let historyIndex = -1;
+        function snapshot() {
+            if(!state.projectId) return;
+            const snap = state.items.map(i => {
+                const clone = JSON.parse(JSON.stringify(i)); clone.mediaEl = i.mediaEl; clone.file = i.file;
+                if(i.drawCnv) { const cnv = document.createElement('canvas'); cnv.width = i.drawCnv.width; cnv.height = i.drawCnv.height; cnv.getContext('2d').drawImage(i.drawCnv, 0, 0); clone.drawCnv = cnv; }
+                return clone;
+            });
+            if(historyIndex < historyStack.length - 1) historyStack = historyStack.slice(0, historyIndex + 1);
+            historyStack.push(snap); if(historyStack.length > 20) historyStack.shift(); else historyIndex++;
+            saveCurrentProject();
+        }
+        window.undo = () => { if(historyIndex > 0) { historyIndex--; restoreSnapshot(historyStack[historyIndex]); } };
+        window.redo = () => { if(historyIndex < historyStack.length - 1) { historyIndex++; restoreSnapshot(historyStack[historyIndex]); } };
+        function restoreSnapshot(snap) {
+            state.items = snap.map(i => {
+                const clone = JSON.parse(JSON.stringify(i)); clone.mediaEl = i.mediaEl; clone.file = i.file;
+                if(i.drawCnv) { const cnv = document.createElement('canvas'); cnv.width = i.drawCnv.width; cnv.height = i.drawCnv.height; cnv.getContext('2d').drawImage(i.drawCnv, 0, 0); clone.drawCnv = cnv; }
+                return clone;
+            });
+            updateProjectDuration(); renderTimeline(); drawFrame(); syncUI(); saveCurrentProject();
+        }
+        window.addEventListener('keydown', (e) => {
+            if (e.ctrlKey && e.key === 'z') { e.preventDefault(); undo(); }
+            if (e.ctrlKey && e.key === 'y') { e.preventDefault(); redo(); }
+            if (e.ctrlKey && e.key === 'c') { e.preventDefault(); duplicateActiveItem(); }
+            if (e.key === 'Delete') { if(document.activeElement !== document.getElementById('textInput')) { e.preventDefault(); removeActiveItem(); } }
+        });
+
+        document.querySelectorAll('.tool-tab').forEach(tab => {
+            tab.addEventListener('click', () => {
+                document.querySelectorAll('.tool-tab').forEach(t => { t.classList.remove('bg-panelBorder', 'text-white'); t.classList.add('text-gray-400'); });
+                tab.classList.add('bg-panelBorder', 'text-white'); tab.classList.remove('text-gray-400');
+                document.querySelectorAll('.tab-content').forEach(c => c.classList.remove('active'));
+                const targetId = tab.dataset.target; if(document.getElementById(targetId)) document.getElementById(targetId).classList.add('active');
+            });
+        });
+
+        function createBaseProps(type) {
+            return {
+                x: 0, y: 0, scale: 1, rotation: 0,
+                brightness: 100, contrast: 100, blur: 0,
+                cropLeft: 0, cropRight: 0, cropTop: 0, cropBottom: 0,
+                muted: false, fontSize: 60, font: 'Arial', color: '#ffffff', bgVisible: false, bold: false, italic: false,
+                trimStart: 0, playbackRate: 1.0 // Yeni Eklenenler
+            };
+        }
+
+        document.getElementById('mediaInput').addEventListener('change', async (e) => {
+            const files = Array.from(e.target.files); if(files.length === 0) return; unlockUI();
+            for (let file of files) {
+                const id = 'media_' + Date.now() + Math.random().toString(16).slice(2); const isVideo = file.type.startsWith('video/'); const src = URL.createObjectURL(file);
+                let mediaEl; let duration = 4;
+                if (isVideo) {
+                    mediaEl = document.createElement('video'); mediaEl.src = src; mediaEl.muted = true; mediaEl.playsInline = true; ELS.pool.appendChild(mediaEl);
+                    await new Promise(resolve => { mediaEl.onloadedmetadata = () => { duration = mediaEl.duration; resolve(); }; });
+                } else {
+                    mediaEl = new Image(); mediaEl.src = src; await new Promise(resolve => { mediaEl.onload = resolve; });
+                }
+                const drawCnv = document.createElement('canvas'); drawCnv.width = state.pWidth; drawCnv.height = state.pHeight;
+                const item = { id, type: isVideo ? 'video' : 'image', file, src, mediaEl, track: findAvailableVisualTrack(0, duration), startTime: 0, duration, props: createBaseProps(isVideo ? 'video' : 'image'), drawCnv: drawCnv };
+                state.items.push(item); updateProjectDuration(); selectItem(id);
+            }
+            snapshot(); renderTimeline(); drawFrame();
+        });
+
+        document.getElementById('audioInput').addEventListener('change', async (e) => {
+            const files = Array.from(e.target.files); if(files.length === 0) return; unlockUI();
+            for (let file of files) {
+                const id = 'audio_' + Date.now(); const src = URL.createObjectURL(file); const mediaEl = document.createElement('audio'); mediaEl.src = src; ELS.pool.appendChild(mediaEl);
+                await new Promise(resolve => { mediaEl.onloadedmetadata = () => resolve(); });
+                const item = { id, type: 'audio', file, src, mediaEl, track: findAvailableAudioTrack(0, mediaEl.duration), startTime: 0, duration: mediaEl.duration, props: createBaseProps('audio') };
+                state.items.push(item); updateProjectDuration();
+            }
+            snapshot(); renderTimeline();
+        });
+
+        window.addTextItem = () => {
+            unlockUI(); const id = 'text_' + Date.now();
+            const item = { id, type: 'text', text: 'Yeni Metin ✨', track: findAvailableVisualTrack(state.currentTime, 3), startTime: state.currentTime, duration: 4, props: createBaseProps('text') };
+            state.items.push(item); updateProjectDuration(); renderTimeline(); selectItem(id); drawFrame(); snapshot();
+        };
+
+        window.removeActiveItem = () => {
+            if(!state.selectedId) return; state.items = state.items.filter(i => i.id !== state.selectedId); state.selectedId = null;
+            updateProjectDuration(); renderTimeline(); drawFrame(); syncUI(); snapshot(); if(state.items.length === 0) lockUI();
+        }
+        window.duplicateActiveItem = () => {
+            const active = getActive(); if(!active) return;
+            const newItem = JSON.parse(JSON.stringify(active)); newItem.id = active.type + '_copy_' + Date.now(); newItem.startTime += 0.5;
+            newItem.track = active.type === 'audio' ? findAvailableAudioTrack(newItem.startTime, newItem.duration) : findAvailableVisualTrack(newItem.startTime, newItem.duration);
+            newItem.file = active.file;
+            if(active.type === 'video' || active.type === 'audio') { newItem.mediaEl = active.mediaEl.cloneNode(); ELS.pool.appendChild(newItem.mediaEl); } else if(active.type === 'image') { newItem.mediaEl = active.mediaEl; }
+            if(active.drawCnv) { const newCnv = document.createElement('canvas'); newCnv.width = active.drawCnv.width; newCnv.height = active.drawCnv.height; newCnv.getContext('2d').drawImage(active.drawCnv, 0, 0); newItem.drawCnv = newCnv; }
+            state.items.push(newItem); updateProjectDuration(); renderTimeline(); selectItem(newItem.id); drawFrame(); snapshot();
+        };
+
+        function unlockUI() { ELS.toolsPanel.style.opacity = '1'; ELS.toolsPanel.style.pointerEvents = 'auto'; ELS.exportBtn.disabled = false; }
+        function lockUI() { ELS.toolsPanel.style.opacity = '0.5'; ELS.toolsPanel.style.pointerEvents = 'none'; ELS.exportBtn.disabled = true; }
+
+        function findAvailableVisualTrack(start, dur) { let t = 0; while(true) { const overlap = state.items.some(i => i.type !== 'audio' && i.track === t && (start < i.startTime + i.duration && start + dur > i.startTime)); if(!overlap) return t; t++; } }
+        function findAvailableAudioTrack(start, dur) { let t = 1000; while(true) { const overlap = state.items.some(i => i.type === 'audio' && i.track === t && (start < i.startTime + i.duration && start + dur > i.startTime)); if(!overlap) return t; t++; } }
+        function updateProjectDuration() { let max = 5; state.items.forEach(i => { if(i.startTime + i.duration > max) max = i.startTime + i.duration; }); state.duration = max; updatePlayhead(); }
+
+        function renderTimeline() {
+            ELS.tlContainer.innerHTML = '';
+            const visualTracksCount = Math.max(3, ...state.items.filter(i=>i.type!=='audio').map(i=>i.track+1));
+            const audioTracksCount = Math.max(2, ...state.items.filter(i=>i.type==='audio').map(i=>i.track-1000+1));
+            const contentWidth = state.duration * state.pxPerSec + 200;
+
+            for(let i = visualTracksCount-1; i >= 0; i--) {
+                const trackDiv = document.createElement('div'); trackDiv.className = 'tl-track'; trackDiv.dataset.trackIndex = i;
+                trackDiv.innerHTML = `<div class="tl-track-label">${t('layer')} ${i+1}</div><div class="tl-content" style="width:${contentWidth}px"></div>`;
+                const content = trackDiv.querySelector('.tl-content'); state.items.filter(item => item.type !== 'audio' && item.track === i).forEach(item => { content.appendChild(createSegmentDOM(item)); });
+                ELS.tlContainer.appendChild(trackDiv);
+            }
+            for(let i = 0; i < audioTracksCount; i++) {
+                const trackDiv = document.createElement('div'); trackDiv.className = 'tl-track border-t-2 border-accent'; trackDiv.dataset.trackIndex = i + 1000;
+                trackDiv.innerHTML = `<div class="tl-track-label">${t('musicLayer')} ${i+1}</div><div class="tl-content" style="width:${contentWidth}px"></div>`;
+                const content = trackDiv.querySelector('.tl-content'); state.items.filter(item => item.type === 'audio' && item.track === (i+1000)).forEach(item => { content.appendChild(createSegmentDOM(item)); });
+                ELS.tlContainer.appendChild(trackDiv);
+            }
+
+            const playhead = document.createElement('div'); playhead.className = 'tl-playhead'; playhead.id = 'playhead'; playhead.style.left = `80px`;
+            const totalTrackHeight = (visualTracksCount + audioTracksCount) * 40; playhead.style.height = Math.max(totalTrackHeight, ELS.tlContainer.clientHeight) + 'px';
+            ELS.tlContainer.appendChild(playhead); updatePlayhead(); setTimeout(updateScroller, 50);
+        }
+
+        function createSegmentDOM(item) {
+            const seg = document.createElement('div');
+            seg.className = `tl-segment ${item.id === state.selectedId ? 'active' : ''} ${item.type === 'audio' ? 'bg-green-700 border-green-500' : ''}`;
+            seg.style.left = (item.startTime * state.pxPerSec) + 'px'; seg.style.width = (item.duration * state.pxPerSec) + 'px';
+            let label = item.type; if(item.type === 'text') label = item.text.substring(0, 10);
+            seg.innerHTML = `<span class="truncate pointer-events-none">${label}</span><div class="tl-resizer-l" data-id="${item.id}" data-action="resize-l"></div><div class="tl-resizer-r" data-id="${item.id}" data-action="resize-r"></div>`;
+            seg.addEventListener('mousedown', (e) => {
+                e.stopPropagation(); selectItem(item.id);
+                if(e.target.dataset.action) state.dragMode = e.target.dataset.action; else state.dragMode = 'move';
+                state.dragItem = item; state.dragStartX = e.clientX; state.dragStartY = e.clientY;
+                state.dragInitVal = state.dragMode === 'move' ? item.startTime : item.duration;
+                if(state.dragMode === 'resize-l') { state.dragInitStartTime = item.startTime; state.dragInitDuration = item.duration; }
+            });
+            return seg;
+        }
+
+        document.addEventListener('mousemove', (e) => {
+            if(!state.dragMode) return;
+            if(state.dragMode === 'scrub') {
+                const contentEl = document.querySelector('.tl-content'); if(!contentEl) return;
+                const rect = contentEl.getBoundingClientRect(); const clickX = e.clientX - rect.left;
+                let newTime = clickX / state.pxPerSec; if(newTime < 0) newTime = 0; if(newTime > state.duration) newTime = state.duration;
+                state.currentTime = newTime; updatePlayhead(); drawFrame(); syncVideosToTime(); return;
+            }
+            const dx = e.clientX - state.dragStartX; const dt = dx / state.pxPerSec;
+            if(state.dragMode === 'move') {
+                let newStart = state.dragInitVal + dt; if(newStart < 0) newStart = 0; state.dragItem.startTime = newStart;
+                const elementsUnder = document.elementsFromPoint(e.clientX, e.clientY);
+                const trackEl = elementsUnder.find(el => el.classList && el.classList.contains('tl-track'));
+                if(trackEl && trackEl.dataset.trackIndex !== undefined) {
+                    const newTrackIndex = parseInt(trackEl.dataset.trackIndex);
+                    if (state.dragItem.type === 'audio' && newTrackIndex >= 1000) state.dragItem.track = newTrackIndex; else if (state.dragItem.type !== 'audio' && newTrackIndex < 1000) state.dragItem.track = newTrackIndex;
+                }
+            } else if (state.dragMode === 'resize-r') {
+                let newDur = state.dragInitVal + dt; if(newDur < 0.5) newDur = 0.5; state.dragItem.duration = newDur;
+            } else if (state.dragMode === 'resize-l') {
+                let newStart = state.dragInitStartTime + dt; let newDur = state.dragInitDuration - dt;
+                if(newDur < 0.5) { newDur = 0.5; newStart = state.dragInitStartTime + state.dragInitDuration - 0.5; }
+                if(newStart < 0) { newStart = 0; newDur = state.dragInitStartTime + state.dragInitDuration; }
+                state.dragItem.startTime = newStart; state.dragItem.duration = newDur;
+            }
+            updateProjectDuration(); renderTimeline(); drawFrame();
+        });
+
+        document.addEventListener('mouseup', () => { if(state.dragItem) snapshot(); state.dragItem = null; state.dragMode = null; });
+        ELS.tlContainer.addEventListener('mousedown', (e) => {
+            if(state.dragItem || e.target.closest('.tl-segment') || e.button !== 0 || isPanningTL) return;
+            state.dragMode = 'scrub';
+            const contentEl = document.querySelector('.tl-content');
+            if(contentEl) {
+                const rect = contentEl.getBoundingClientRect(); const clickX = e.clientX - rect.left; let newTime = clickX / state.pxPerSec;
+                if(newTime < 0) newTime = 0; if(newTime > state.duration) newTime = state.duration;
+                state.currentTime = newTime; updatePlayhead(); drawFrame(); syncVideosToTime();
+            }
+        });
+
+        function formatTimeStr(seconds) {
+            const m = Math.floor(seconds / 60).toString().padStart(2, '0');
+            const s = Math.floor(seconds % 60).toString().padStart(2, '0');
+            const ms = Math.floor((seconds % 1) * 100).toString().padStart(2, '0');
+            return `${m}:${s}.${ms}`;
+        }
+        function updatePlayhead() {
+            const ph = document.getElementById('playhead'); if(ph) ph.style.transform = `translateX(${state.currentTime * state.pxPerSec}px)`;
+            if(!state.isPlaying && document.activeElement !== ELS.timeInput) ELS.timeInput.value = formatTimeStr(state.currentTime);
+            ELS.durationDisplay.innerText = formatTimeStr(state.duration);
+        }
+        ELS.timeInput.addEventListener('change', (e) => {
+            const parts = e.target.value.split(':'); let secs = 0;
+            if(parts.length === 2) { const sParts = parts[1].split('.'); secs = parseInt(parts[0]) * 60 + parseInt(sParts[0]); if(sParts.length > 1) secs += parseInt(sParts[1]) / 100; }
+            else secs = parseFloat(e.target.value);
+            if(!isNaN(secs)) { state.currentTime = Math.min(Math.max(secs, 0), state.duration); syncVideosToTime(); updatePlayhead(); drawFrame(); ELS.timeInput.value = formatTimeStr(state.currentTime); }
+        });
+
+        document.getElementById('zoomInBtn').addEventListener('click', () => { state.pxPerSec = Math.min(state.pxPerSec * 1.5, 300); renderTimeline(); });
+        document.getElementById('zoomOutBtn').addEventListener('click', () => { state.pxPerSec = Math.max(state.pxPerSec / 1.5, 10); renderTimeline(); });
+
+        function selectItem(id) {
+            state.selectedId = id; const item = state.items.find(i => i.id === id);
+            if(item && item.type === 'text') { ELS.textTabBtn.style.display = 'block'; document.querySelector('[data-target="tab-text"]').click(); setTimeout(() => { const txtInput = document.getElementById('textInput'); if(txtInput) { txtInput.focus(); txtInput.select(); } }, 50); }
+            else { ELS.textTabBtn.style.display = 'none'; document.querySelector('[data-target="tab-transform"]').click(); }
+            renderTimeline(); syncUI(); drawFrame();
+        }
+        function getActive() { return state.items.find(i => i.id === state.selectedId); }
+
+        const bindSlider = (prop, valId, isInt=true) => {
+            const el = document.querySelector(`input[data-prop="${prop}"]`); if(!el) return;
+            el.addEventListener('input', (e) => {
+                const item = getActive(); if(!item) return; item.props[prop] = parseFloat(e.target.value);
+                let displayStr = e.target.value; if(prop === 'rotation') displayStr += '°'; else if(['brightness', 'contrast', 'blur', 'cropLeft', 'cropRight', 'cropTop', 'cropBottom'].includes(prop)) displayStr += '%';
+                document.getElementById(valId).innerText = displayStr; drawFrame();
+            }); el.addEventListener('change', () => snapshot());
+        };
+
+        bindSlider('x', 'val-x'); bindSlider('y', 'val-y'); bindSlider('scale', 'val-scale', false); bindSlider('rotation', 'val-rot');
+        bindSlider('brightness', 'val-bright'); bindSlider('contrast', 'val-contrast'); bindSlider('blur', 'val-blur');
+        bindSlider('cropLeft', 'val-cropL'); bindSlider('cropRight', 'val-cropR'); bindSlider('cropTop', 'val-cropT'); bindSlider('cropBottom', 'val-cropB');
+
+        window.resetProp = (prop, defaultVal) => { const item = getActive(); if(!item) return; item.props[prop] = defaultVal; syncUI(); drawFrame(); snapshot(); };
+        window.centerActiveItem = () => { const item = getActive(); if(!item) return; item.props.x = 0; item.props.y = 0; syncUI(); drawFrame(); snapshot(); }
+
+        ELS.inpStartTime.addEventListener('change', (e) => { const item = getActive(); if(!item) return; let val = parseFloat(e.target.value); if(isNaN(val) || val < 0) val = 0; item.startTime = val; updateProjectDuration(); renderTimeline(); drawFrame(); snapshot(); });
+        ELS.inpDuration.addEventListener('change', (e) => { const item = getActive(); if(!item) return; let val = parseFloat(e.target.value); if(isNaN(val) || val < 0.5) val = 0.5; item.duration = val; updateProjectDuration(); renderTimeline(); drawFrame(); snapshot(); });
+        
+        ELS.inpTrimStart.addEventListener('change', (e) => { const item = getActive(); if(!item) return; let val = parseFloat(e.target.value); if(isNaN(val) || val < 0) val = 0; item.props.trimStart = val; syncVideosToTime(); snapshot(); });
+        ELS.inpPlaybackRate.addEventListener('change', (e) => { const item = getActive(); if(!item) return; item.props.playbackRate = parseFloat(e.target.value); if(item.mediaEl) item.mediaEl.playbackRate = item.props.playbackRate; syncVideosToTime(); snapshot(); });
+
+        const textInp = document.getElementById('textInput'); const fontSel = document.getElementById('fontSelect'); const colorInp = document.getElementById('textColor'); const bgToggle = document.getElementById('bgVisibleToggle'); const bBtn = document.getElementById('boldBtn'); const iBtn = document.getElementById('italicBtn'); const muteBox = document.getElementById('muteBox'); const muteToggle = document.getElementById('muteToggle');
+        textInp.addEventListener('input', e => { const i = getActive(); if(i) { i.text = e.target.value; drawFrame(); }}); textInp.addEventListener('change', () => snapshot()); 
+        fontSel.addEventListener('change', e => { const i = getActive(); if(i) { i.props.font = e.target.value; drawFrame(); snapshot(); }}); colorInp.addEventListener('change', e => { const i = getActive(); if(i) { i.props.color = e.target.value; drawFrame(); snapshot(); }}); bgToggle.addEventListener('change', e => { const i = getActive(); if(i) { i.props.bgVisible = e.target.checked; drawFrame(); snapshot(); }});
+        bBtn.addEventListener('click', () => { const i = getActive(); if(i) { i.props.bold = !i.props.bold; syncUI(); drawFrame(); snapshot(); }}); iBtn.addEventListener('click', () => { const i = getActive(); if(i) { i.props.italic = !i.props.italic; syncUI(); drawFrame(); snapshot(); }});
+        muteToggle.addEventListener('change', e => { const i = getActive(); if(i) { i.props.muted = e.target.checked; snapshot(); }}); document.getElementById('loopToggle').addEventListener('change', e => { state.loop = e.target.checked; });
+
+        function syncUI() {
+            const item = getActive(); if(!item) return; const p = item.props;
+            if(ELS.inpStartTime && ELS.inpDuration) { ELS.inpStartTime.value = item.startTime.toFixed(2); ELS.inpDuration.value = item.duration.toFixed(2); }
+            const updateS = (prop, valId, suffix='') => { const el = document.querySelector(`input[data-prop="${prop}"]`); if(el && p[prop] !== undefined) { el.value = p[prop]; document.getElementById(valId).innerText = p[prop] + suffix; } };
+
+            updateS('x', 'val-x'); updateS('y', 'val-y'); updateS('scale', 'val-scale'); updateS('rotation', 'val-rot', '°');
+            updateS('brightness', 'val-bright', '%'); updateS('contrast', 'val-contrast', '%'); updateS('blur', 'val-blur', '%');
+            updateS('cropLeft', 'val-cropL', '%'); updateS('cropRight', 'val-cropR', '%'); updateS('cropTop', 'val-cropT', '%'); updateS('cropBottom', 'val-cropB', '%');
+
+            if(item.type === 'text') {
+                textInp.value = item.text || ''; fontSel.value = p.font || 'Arial'; colorInp.value = p.color || '#ffffff';
+                bgToggle.checked = !!p.bgVisible; bBtn.style.background = p.bold ? '#27272a' : 'transparent'; iBtn.style.background = p.italic ? '#27272a' : 'transparent';
+            }
+            if(item.type === 'video' || item.type === 'audio') {
+                ELS.mediaTimeSettings.style.display = 'block';
+                ELS.inpTrimStart.value = p.trimStart !== undefined ? p.trimStart.toFixed(2) : "0.00";
+                ELS.inpPlaybackRate.value = p.playbackRate !== undefined ? p.playbackRate.toString() : "1";
+                muteBox.style.display = 'flex'; muteToggle.checked = !!p.muted;
+            } else { ELS.mediaTimeSettings.style.display = 'none'; muteBox.style.display = 'none'; }
+        }
+
+        const penBtn = document.getElementById('penBtn'); const eraserBtn = document.getElementById('eraserBtn'); const drawColorInp = document.getElementById('drawColor'); const brushSizeInp = document.getElementById('brushSize');
+        penBtn.addEventListener('click', () => { state.drawMode = 'pen'; updateDrawUI(); }); eraserBtn.addEventListener('click', () => { state.drawMode = 'eraser'; updateDrawUI(); });
+        document.querySelectorAll('.tool-tab').forEach(t => t.addEventListener('click', () => { if(t.dataset.target !== 'tab-draw') { state.drawMode = 'none'; updateDrawUI(); } }));
+        drawColorInp.addEventListener('input', e => state.drawColor = e.target.value); brushSizeInp.addEventListener('input', e => { state.drawSize = parseInt(e.target.value); document.getElementById('val-brushSize').innerText = e.target.value + 'px'; });
+        function updateDrawUI() {
+            penBtn.className = `flex-1 p-2 rounded text-xs flex justify-center items-center gap-1 border transition-colors ${state.drawMode === 'pen' ? 'bg-accent text-white border-accent' : 'bg-darkBg text-gray-300 border-panelBorder hover:border-white'}`;
+            eraserBtn.className = `flex-1 p-2 rounded text-xs flex justify-center items-center gap-1 border transition-colors ${state.drawMode === 'eraser' ? 'bg-white text-black border-white' : 'bg-darkBg text-gray-300 border-panelBorder hover:border-white'}`;
+            ELS.renderCanvas.style.cursor = state.drawMode !== 'none' ? 'crosshair' : 'move';
+        }
+        window.clearDrawings = () => { const item = getActive(); if(!item || !item.drawCnv) return; item.drawCnv.getContext('2d').clearRect(0, 0, state.pWidth, state.pHeight); drawFrame(); snapshot(); }
+        function getCanvasPoint(e) { const rect = ELS.renderCanvas.getBoundingClientRect(); const scaleX = ELS.renderCanvas.width / rect.width; const scaleY = ELS.renderCanvas.height / rect.height; const clientX = e.touches ? e.touches[0].clientX : e.clientX; const clientY = e.touches ? e.touches[0].clientY : e.clientY; return { x: (clientX - rect.left) * scaleX, y: (clientY - rect.top) * scaleY }; }
+        function getLocalPoint(screenPt, item) { const cx = state.pWidth / 2; const cy = state.pHeight / 2; let lx = screenPt.x - (cx + item.props.x); let ly = screenPt.y - (cy + item.props.y); const angle = -item.props.rotation * Math.PI / 180; const rx = lx * Math.cos(angle) - ly * Math.sin(angle); const ry = lx * Math.sin(angle) + ly * Math.cos(angle); lx = rx / item.props.scale; ly = ry / item.props.scale; return { x: lx + cx, y: ly + cy }; }
+        
+        ELS.renderCanvas.addEventListener('mousedown', handlePtrDown); ELS.renderCanvas.addEventListener('mousemove', handlePtrMove); window.addEventListener('mouseup', handlePtrUp);
+        ELS.renderCanvas.addEventListener('touchstart', handlePtrDown, {passive: false}); ELS.renderCanvas.addEventListener('touchmove', handlePtrMove, {passive: false}); window.addEventListener('touchend', handlePtrUp);
+        let canvasDragStart = null;
+        function handlePtrDown(e) {
+            if(state.isPlaying) return; const pt = getCanvasPoint(e);
+            if(state.drawMode === 'pen' || state.drawMode === 'eraser') { const item = getActive(); if(item && item.drawCnv) { state.isDrawing = true; state.lastDrawPt = getLocalPoint(pt, item); drawOnItemCanvas(state.lastDrawPt, item, false); } } 
+            else { const item = getActive(); if(item) canvasDragStart = { x: pt.x, y: pt.y, initObjX: item.props.x, initObjY: item.props.y }; }
+        }
+        function handlePtrMove(e) {
+            if(state.isDrawing) { e.preventDefault(); const pt = getCanvasPoint(e); const item = getActive(); const localPt = getLocalPoint(pt, item); drawOnItemCanvas(localPt, item, true); state.lastDrawPt = localPt; drawFrame(); } 
+            else if (canvasDragStart) { const pt = getCanvasPoint(e); const item = getActive(); if(item) { item.props.x = canvasDragStart.initObjX + (pt.x - canvasDragStart.x); item.props.y = canvasDragStart.initObjY + (pt.y - canvasDragStart.y); syncUI(); drawFrame(); } }
+        }
+        function handlePtrUp() { if(state.isDrawing || canvasDragStart) snapshot(); state.isDrawing = false; state.lastDrawPt = null; canvasDragStart = null; }
+        function drawOnItemCanvas(localPt, item, isLine) {
+            const dCtx = item.drawCnv.getContext('2d'); dCtx.lineWidth = state.drawSize; dCtx.lineCap = 'round'; dCtx.lineJoin = 'round';
+            if(state.drawMode === 'eraser') { dCtx.globalCompositeOperation = 'destination-out'; dCtx.strokeStyle = 'rgba(0,0,0,1)'; } else { dCtx.globalCompositeOperation = 'source-over'; dCtx.strokeStyle = state.drawColor; }
+            dCtx.beginPath(); if(isLine && state.lastDrawPt) { dCtx.moveTo(state.lastDrawPt.x, state.lastDrawPt.y); dCtx.lineTo(localPt.x, localPt.y); } else { dCtx.moveTo(localPt.x, localPt.y); dCtx.lineTo(localPt.x + 0.1, localPt.y); } dCtx.stroke();
+        }
+
+        function drawFrame() {
+            ctx.fillStyle = '#000000'; ctx.fillRect(0, 0, state.pWidth, state.pHeight);
+            const activeItems = state.items.filter(i => i.type !== 'audio' && state.currentTime >= i.startTime && state.currentTime <= i.startTime + i.duration).sort((a,b) => a.track - b.track);
+            for(let item of activeItems) {
+                const p = item.props; ctx.save(); const cx = state.pWidth / 2; const cy = state.pHeight / 2;
+                ctx.translate(cx + p.x, cy + p.y); ctx.rotate(p.rotation * Math.PI / 180); ctx.scale(p.scale, p.scale);
+                if(!state.isPlaying && !state.isExporting && item.id === state.selectedId) { ctx.strokeStyle = 'rgba(59, 130, 246, 0.5)'; ctx.lineWidth = 2 / p.scale; ctx.strokeRect(-cx/2, -cy/2, cx, cy); }
+                if(item.type === 'video' || item.type === 'image') {
+                    const mw = item.mediaEl.videoWidth || item.mediaEl.width; const mh = item.mediaEl.videoHeight || item.mediaEl.height;
+                    if(mw && mh) {
+                        const cl = mw * (p.cropLeft/100); const cr = mw * (p.cropRight/100); const ct = mh * ((p.cropTop||0)/100); const cb = mh * ((p.cropBottom||0)/100);
+                        const dw = mw - cl - cr; const dh = mh - ct - cb;
+                        const blurPx = (p.blur / 100) * 20; ctx.filter = `brightness(${p.brightness}%) contrast(${p.contrast}%) blur(${blurPx}px)`;
+                        ctx.drawImage(item.mediaEl, cl, ct, dw, dh, -dw/2, -dh/2, dw, dh); ctx.filter = 'none';
+                    }
+                } 
+                else if (item.type === 'text') {
+                    ctx.font = `${p.italic ? 'italic ' : ''}${p.bold ? 'bold ' : ''}${p.fontSize}px ${p.font}`; ctx.textBaseline = 'middle'; ctx.textAlign = 'center';
+                    const lines = item.text.split('\n'); const lineHeight = p.fontSize * 1.2; const startY = -(lines.length - 1) * lineHeight / 2;
+                    if(p.bgVisible) { let maxWidth = 0; lines.forEach(line => { const w = ctx.measureText(line).width; if(w > maxWidth) maxWidth = w; }); ctx.fillStyle = 'rgba(0,0,0,0.7)'; ctx.fillRect(-maxWidth/2 - 20, startY - p.fontSize/2 - 10, maxWidth + 40, lines.length * lineHeight + 20); }
+                    ctx.fillStyle = p.color; lines.forEach((line, idx) => { ctx.fillText(line, 0, startY + idx * lineHeight); });
+                }
+                if(item.drawCnv) ctx.drawImage(item.drawCnv, -cx, -cy, state.pWidth, state.pHeight); ctx.restore();
+            }
+        }
+
+        let playReq; let lastTime = 0;
+        ELS.playBtn.addEventListener('click', () => { if(state.isPlaying) stopPlayback(); else startPlayback(); });
+
+        function startPlayback() {
+            state.isPlaying = true; ELS.playIcon.classList.replace('ph-play', 'ph-pause'); lastTime = performance.now();
+            if(state.currentTime >= state.duration) state.currentTime = 0;
+            syncVideosToTime(); loopTick();
+        }
+        function stopPlayback() {
+            state.isPlaying = false; ELS.playIcon.classList.replace('ph-pause', 'ph-play'); cancelAnimationFrame(playReq);
+            pauseAllMedia(); updatePlayhead(); drawFrame();
+        }
+        function loopTick() {
+            if(!state.isPlaying) return;
+            const now = performance.now(); const dt = (now - lastTime) / 1000; lastTime = now; state.currentTime += dt;
+            if(state.currentTime >= state.duration) {
+                if(state.loop && !state.isExporting) { state.currentTime = 0; syncVideosToTime(); } 
+                else { state.currentTime = state.duration; if(state.isExporting) finishExport(); else stopPlayback(); return; }
+            }
+            updatePlayhead(); drawFrame();
+            
+            state.items.forEach(i => {
+                if(i.type === 'video' || i.type === 'audio') {
+                    if(state.currentTime >= i.startTime && state.currentTime <= i.startTime + i.duration) {
+                        if(i.mediaEl.paused) { i.mediaEl.muted = i.props.muted || state.isExporting; i.mediaEl.play().catch(e=>console.log("Play engellendi")); }
+                        if(i.mediaEl.playbackRate !== (i.props.playbackRate || 1.0)) i.mediaEl.playbackRate = i.props.playbackRate || 1.0;
+                    } else if(!i.mediaEl.paused) { i.mediaEl.pause(); }
+                }
+            });
+            playReq = requestAnimationFrame(loopTick);
+        }
+
+        function syncVideosToTime() {
+            state.items.forEach(i => {
+                if(i.type === 'video' || i.type === 'audio') {
+                    const localTime = state.currentTime - i.startTime;
+                    if(localTime >= 0 && localTime <= i.duration) {
+                        const targetTime = (i.props.trimStart || 0) + (localTime * (i.props.playbackRate || 1.0));
+                        if(Math.abs(i.mediaEl.currentTime - targetTime) > 0.2) i.mediaEl.currentTime = targetTime;
+                        if(i.mediaEl.playbackRate !== (i.props.playbackRate || 1.0)) i.mediaEl.playbackRate = i.props.playbackRate || 1.0;
+                    } else { i.mediaEl.pause(); }
+                }
+            });
+        }
+        function pauseAllMedia() { state.items.forEach(i => { if(i.type === 'video' || i.type === 'audio') i.mediaEl.pause(); }); }
+
+        let mediaRecorder; let recordedChunks = [];
+        ELS.exportBtn.addEventListener('click', async () => {
+            if(state.items.length === 0) return;
+            state.isExporting = true; ELS.statusNotice.classList.remove('hidden'); ELS.exportBtn.disabled = true; recordedChunks = [];
+            try {
+                const stream = ELS.renderCanvas.captureStream(30); const tracks = [...stream.getVideoTracks()];
+                try {
+                    const actx = new (window.AudioContext || window.webkitAudioContext)(); const dest = actx.createMediaStreamDestination();
+                    state.items.forEach(item => { if((item.type === 'audio' || item.type === 'video') && !item.props.muted) { const src = actx.createMediaElementSource(item.mediaEl); src.connect(dest); src.connect(actx.destination); } });
+                    if(dest.stream.getAudioTracks().length > 0) tracks.push(dest.stream.getAudioTracks()[0]);
+                } catch(err) { console.log("Ses miksajı CORS nedeniyle başarısız", err); }
+
+                const combined = new MediaStream(tracks); mediaRecorder = new MediaRecorder(combined, { mimeType: 'video/webm;codecs=vp9' });
+                mediaRecorder.ondataavailable = e => { if(e.data.size > 0) recordedChunks.push(e.data); };
+                mediaRecorder.onstop = () => {
+                    const blob = new Blob(recordedChunks, { type: 'video/webm' }); const url = URL.createObjectURL(blob);
+                    const a = document.createElement('a'); a.style.display = 'none'; a.href = url; a.download = `${state.projectName.replace(/\s+/g, '_')}_export.webm`;
+                    document.body.appendChild(a); a.click(); setTimeout(() => { document.body.removeChild(a); window.URL.revokeObjectURL(url); }, 100);
+                    state.isExporting = false; ELS.statusNotice.classList.add('hidden'); ELS.exportBtn.disabled = false; document.getElementById('statusText').innerText = t('downloadReady');
+                };
+
+                state.currentTime = 0; ELS.timeInput.value = "00:00.00"; syncVideosToTime(); mediaRecorder.start(); startPlayback();
+            } catch (err) { alert(t('exportFailed')); state.isExporting = false; ELS.statusNotice.classList.add('hidden'); ELS.exportBtn.disabled = false; }
+        });
+        function finishExport() { if(mediaRecorder && mediaRecorder.state !== 'inactive') { document.getElementById('statusText').innerText = t('downloadReady'); mediaRecorder.stop(); } }
+
+    </script>
+</body>
+</html>
